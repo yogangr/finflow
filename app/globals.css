@@ -1,0 +1,9 @@
+@import "tailwindcss";
+:root { --ink:#16193a; --bg:#eef1f8; --indigo:#4f46e5; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-jakarta), system-ui, sans-serif; }
+.panel { background:#fff; border-radius:1.25rem; padding:1.5rem; box-shadow:0 1px 2px rgba(22,25,58,.05); }
+.field { width:100%; border-radius:.75rem; border:1px solid #dfe3f0; padding:.6rem .8rem; background:#fff; outline:none; }
+.field:focus-visible { border-color:var(--indigo); box-shadow:0 0 0 3px rgba(79,70,229,.2); }
+@keyframes rise { from { opacity:0; transform:translateY(12px);} to { opacity:1; transform:none; } }
+.hero { animation: rise .6s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .hero { animation:none; } }
