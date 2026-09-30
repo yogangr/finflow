@@ -101,7 +101,7 @@ export default function Dashboard() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
+    <main className="mx-auto max-w-6xl space-y-4 px-4 pb-28 pt-6 sm:space-y-6 sm:px-6 sm:py-8 lg:pb-8">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight">FinFlow</h1>
@@ -110,11 +110,11 @@ export default function Dashboard() {
         <button onClick={logout} className="rounded-xl bg-white px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-slate-50">Keluar</button>
       </header>
 
-      <section className="hero relative overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-indigo-700 via-indigo-600 to-violet-600 p-7 text-white sm:p-10">
+      <section className="hero relative overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-indigo-700 via-indigo-600 to-violet-600 p-5 text-white sm:p-10">
         <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-teal-400/30 blur-3xl" />
         <p className="text-indigo-100">Total saldo</p>
-        <p className="mt-1 text-4xl font-extrabold tracking-tight sm:text-6xl">{loading ? "…" : rp(stats.balance)}</p>
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <p className="mt-1 break-words text-3xl font-extrabold tracking-tight sm:text-6xl">{loading ? "…" : rp(stats.balance)}</p>
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:mt-8 sm:gap-4 lg:grid-cols-4">
           <Mini label="Saldo di luar tabungan" value={rp(stats.wallet)} />
           <Mini label="Saldo tabungan" value={rp(stats.savings)} />
           <Mini label="Total pemasukan" value={rp(stats.income)} />
@@ -126,16 +126,16 @@ export default function Dashboard() {
         <div className="panel lg:col-span-2">
           <h2 className="font-bold">Arus kas 6 bulan terakhir</h2>
           <p className="mb-4 text-sm text-slate-500">Bandingkan pemasukan dan pengeluaran tiap bulan.</p>
-          <div className="h-72">
+          <div className="h-56 sm:h-72">
             <ResponsiveContainer>
-              <AreaChart data={stats.monthly}>
+              <AreaChart data={stats.monthly} margin={{ left: -8, right: 8, top: 8 }}>
                 <defs>
                   <linearGradient id="gi" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#14b8a6" stopOpacity={0.4} /><stop offset="100%" stopColor="#14b8a6" stopOpacity={0} /></linearGradient>
                   <linearGradient id="ge" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#f43f5e" stopOpacity={0.35} /><stop offset="100%" stopColor="#f43f5e" stopOpacity={0} /></linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e6e9f4" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={short} axisLine={false} tickLine={false} width={55} />
+                <YAxis tickFormatter={short} axisLine={false} tickLine={false} width={48} />
                 <Tooltip formatter={(v) => rp(v)} contentStyle={{ borderRadius: 12, border: "none", boxShadow: "0 8px 24px rgba(22,25,58,.15)" }} />
                 <Area type="monotone" dataKey="Pemasukan" stroke="#14b8a6" strokeWidth={3} fill="url(#gi)" />
                 <Area type="monotone" dataKey="Pengeluaran" stroke="#f43f5e" strokeWidth={3} fill="url(#ge)" />
@@ -192,11 +192,11 @@ export default function Dashboard() {
       <section className="panel">
         <h2 className="font-bold">Perbandingan bulanan</h2>
         <p className="mb-4 text-sm text-slate-500">Bulan ini: pemasukan {rp(cur.Pemasukan)}, pengeluaran {rp(cur.Pengeluaran)}.</p>
-        <div className="h-56">
+        <div className="h-48 sm:h-56">
           <ResponsiveContainer>
-            <BarChart data={stats.monthly} barGap={6}>
+            <BarChart data={stats.monthly} barGap={6} margin={{ left: -8, right: 8, top: 8 }}>
               <XAxis dataKey="name" axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={short} axisLine={false} tickLine={false} width={55} />
+              <YAxis tickFormatter={short} axisLine={false} tickLine={false} width={48} />
               <Tooltip formatter={(v) => rp(v)} cursor={{ fill: "#eef1f8" }} />
               <Bar dataKey="Pemasukan" fill="#14b8a6" radius={[8, 8, 0, 0]} />
               <Bar dataKey="Pengeluaran" fill="#f43f5e" radius={[8, 8, 0, 0]} />
@@ -206,12 +206,12 @@ export default function Dashboard() {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-5">
-        <form onSubmit={submit} className="panel space-y-3 lg:col-span-2">
+        <form id="tambah" onSubmit={submit} className="panel scroll-mt-4 space-y-3 lg:col-span-2">
           <h2 className="font-bold">Tambah transaksi</h2>
           <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
             {Object.keys(TYPE_LABEL).map((t) => (
               <button type="button" key={t} onClick={() => setForm({ ...form, type: t, category: CATS[t][0] })}
-                className={`rounded-lg py-2 text-sm font-semibold transition ${form.type === t ? "bg-white shadow" : "text-slate-500"}`}>
+                className={`rounded-lg py-2.5 text-sm font-semibold transition ${form.type === t ? "bg-white shadow" : "text-slate-500"}`}>
                 {TYPE_LABEL[t]}
               </button>
             ))}
@@ -236,28 +236,30 @@ export default function Dashboard() {
           {list.length === 0 && <p className="py-8 text-center text-slate-500">Belum ada transaksi. Tambahkan yang pertama lewat formulir.</p>}
           <ul className="divide-y divide-slate-100">
             {list.map((t) => (
-              <li key={t.id} className="flex items-center gap-3 py-3">
+              <li key={t.id} className="flex items-center gap-2.5 py-3 sm:gap-3">
                 <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl font-bold ${{ indigo: "bg-indigo-50 text-indigo-600", teal: "bg-teal-50 text-teal-600", rose: "bg-rose-50 text-rose-500" }[tone(t)]}`}>{plus(t) ? "+" : "−"}</div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{t.note || t.category}</p>
                   <p className="text-xs text-slate-500">{isSav(t) ? `${TYPE_LABEL[t.type]} • ` : ""}{t.category} • {new Date(t.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</p>
                 </div>
-                <p className={`font-bold ${{ indigo: "text-indigo-600", teal: "text-teal-600", rose: "text-rose-500" }[tone(t)]}`}>{plus(t) ? "+" : "−"}{rp(t.amount)}</p>
-                <button onClick={() => remove(t.id)} aria-label="Hapus transaksi" className="rounded-lg px-2 py-1 text-slate-400 hover:bg-rose-50 hover:text-rose-500">✕</button>
+                <p className={`whitespace-nowrap text-sm font-bold sm:text-base ${{ indigo: "text-indigo-600", teal: "text-teal-600", rose: "text-rose-500" }[tone(t)]}`}>{plus(t) ? "+" : "−"}{rp(t.amount)}</p>
+                <button onClick={() => remove(t.id)} aria-label="Hapus transaksi" className="-mr-1 grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500">✕</button>
               </li>
             ))}
           </ul>
         </div>
       </section>
+      <a href="#tambah" aria-label="Tambah transaksi" style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
+        className="fixed bottom-5 right-5 z-20 grid h-14 w-14 place-items-center rounded-full bg-indigo-600 text-3xl text-white shadow-lg shadow-indigo-600/30 transition active:scale-95 lg:hidden">+</a>
     </main>
   );
 }
 
 function Mini({ label, value }) {
   return (
-    <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
-      <p className="text-sm text-indigo-100">{label}</p>
-      <p className="mt-1 text-xl font-bold">{value}</p>
+    <div className="rounded-2xl bg-white/10 p-3 backdrop-blur sm:p-4">
+      <p className="text-xs text-indigo-100 sm:text-sm">{label}</p>
+      <p className="mt-1 break-words text-[15px] font-bold sm:text-xl">{value}</p>
     </div>
   );
 }
