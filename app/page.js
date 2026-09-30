@@ -5,13 +5,20 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 const rp = (n) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
 const short = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(".0", "")} jt` : n >= 1e3 ? `${Math.round(n / 1e3)} rb` : n);
 const COLORS = ["#4f46e5", "#14b8a6", "#f43f5e", "#f59e0b", "#8b5cf6", "#0ea5e9", "#64748b"];
+const SAV = ["Umum", "Dana darurat", "Liburan", "Pendidikan", "Investasi"];
 const CATS = {
   expense: ["Makanan", "Transport", "Belanja", "Tagihan", "Hiburan", "Kesehatan"],
   income: ["Gaji", "Freelance", "Investasi", "Lainnya"],
+  savings_in: SAV,
+  savings_out: SAV,
 };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 const today = () => new Date().toISOString().slice(0, 10);
 const blank = () => ({ type: "expense", amount: "", category: "Makanan", note: "", date: today() });
+const TYPE_LABEL = { expense: "Pengeluaran", income: "Pemasukan", savings_in: "Setor tabungan", savings_out: "Tarik tabungan" };
+const isSav = (t) => t.type.startsWith("savings");
+const plus = (t) => t.type === "income" || t.type === "savings_in";
+const tone = (t) => (isSav(t) ? "indigo" : plus(t) ? "teal" : "rose");
 
 export default function Dashboard() {
   const [tx, setTx] = useState([]);
@@ -59,10 +66,14 @@ export default function Dashboard() {
     tx.filter((t) => t.type === "expense").forEach((t) => (byCat[t.category] = (byCat[t.category] || 0) + t.amount));
     const cats = Object.entries(byCat).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
 
-    return { income, expense, balance: income - expense, rate: income ? Math.round(((income - expense) / income) * 100) : 0, monthly, cats };
+    const byGoal = {};
+    tx.filter(isSav).forEach((t) => (byGoal[t.category] = (byGoal[t.category] || 0) + (t.type === "savings_in" ? t.amount : -t.amount)));
+    const goals = Object.entries(byGoal).map(([name, value]) => ({ name, value })).filter((g) => g.value > 0).sort((a, b) => b.value - a.value);
+    const savings = sum(tx, "savings_in") - sum(tx, "savings_out");
+    return { income, expense, balance: income - expense, savings, wallet: income - expense - savings, goals, monthly, cats };
   }, [tx]);
 
-  const list = tx.filter((t) => filter === "all" || t.type === filter).slice(0, 12);
+  const list = tx.filter((t) => filter === "all" || (filter === "savings" ? isSav(t) : t.type === filter)).slice(0, 12);
   const cur = stats.monthly[stats.monthly.length - 1];
 
   const login = async (e) => {
@@ -103,10 +114,11 @@ export default function Dashboard() {
         <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-teal-400/30 blur-3xl" />
         <p className="text-indigo-100">Total saldo</p>
         <p className="mt-1 text-4xl font-extrabold tracking-tight sm:text-6xl">{loading ? "…" : rp(stats.balance)}</p>
-        <div className="mt-8 grid gap-4 sm:grid-cols-3">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Mini label="Saldo di luar tabungan" value={rp(stats.wallet)} />
+          <Mini label="Saldo tabungan" value={rp(stats.savings)} />
           <Mini label="Total pemasukan" value={rp(stats.income)} />
           <Mini label="Total pengeluaran" value={rp(stats.expense)} />
-          <Mini label="Rasio tabungan" value={`${stats.rate}%`} />
         </div>
       </section>
 
@@ -156,6 +168,28 @@ export default function Dashboard() {
       </section>
 
       <section className="panel">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="font-bold">Tabungan</h2>
+            <p className="text-sm text-slate-500">Uang yang kamu sisihkan, terpisah dari saldo harian.</p>
+          </div>
+          <p className="text-2xl font-extrabold text-indigo-600">{rp(stats.savings)}</p>
+        </div>
+        {stats.goals.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">Belum ada tabungan. Pilih "Setor tabungan" di formulir untuk mulai menabung.</p>
+        ) : (
+          <ul className="mt-4 space-y-3">
+            {stats.goals.map((g) => (
+              <li key={g.name}>
+                <div className="mb-1 flex justify-between text-sm"><span className="font-semibold">{g.name}</span><span>{rp(g.value)}</span></div>
+                <div className="h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-indigo-500" style={{ width: `${Math.max(4, Math.round((g.value / stats.savings) * 100))}%` }} /></div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="panel">
         <h2 className="font-bold">Perbandingan bulanan</h2>
         <p className="mb-4 text-sm text-slate-500">Bulan ini: pemasukan {rp(cur.Pemasukan)}, pengeluaran {rp(cur.Pengeluaran)}.</p>
         <div className="h-56">
@@ -175,10 +209,10 @@ export default function Dashboard() {
         <form onSubmit={submit} className="panel space-y-3 lg:col-span-2">
           <h2 className="font-bold">Tambah transaksi</h2>
           <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
-            {["expense", "income"].map((t) => (
+            {Object.keys(TYPE_LABEL).map((t) => (
               <button type="button" key={t} onClick={() => setForm({ ...form, type: t, category: CATS[t][0] })}
                 className={`rounded-lg py-2 text-sm font-semibold transition ${form.type === t ? "bg-white shadow" : "text-slate-500"}`}>
-                {t === "expense" ? "Pengeluaran" : "Pemasukan"}
+                {TYPE_LABEL[t]}
               </button>
             ))}
           </div>
@@ -196,19 +230,19 @@ export default function Dashboard() {
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-bold">Transaksi terbaru</h2>
             <select className="field !w-auto !py-1.5 text-sm" value={filter} onChange={(e) => setFilter(e.target.value)}>
-              <option value="all">Semua</option><option value="income">Pemasukan</option><option value="expense">Pengeluaran</option>
+              <option value="all">Semua</option><option value="income">Pemasukan</option><option value="expense">Pengeluaran</option><option value="savings">Tabungan</option>
             </select>
           </div>
           {list.length === 0 && <p className="py-8 text-center text-slate-500">Belum ada transaksi. Tambahkan yang pertama lewat formulir.</p>}
           <ul className="divide-y divide-slate-100">
             {list.map((t) => (
               <li key={t.id} className="flex items-center gap-3 py-3">
-                <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl font-bold ${t.type === "income" ? "bg-teal-50 text-teal-600" : "bg-rose-50 text-rose-500"}`}>{t.type === "income" ? "+" : "−"}</div>
+                <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl font-bold ${{ indigo: "bg-indigo-50 text-indigo-600", teal: "bg-teal-50 text-teal-600", rose: "bg-rose-50 text-rose-500" }[tone(t)]}`}>{plus(t) ? "+" : "−"}</div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{t.note || t.category}</p>
-                  <p className="text-xs text-slate-500">{t.category} • {new Date(t.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</p>
+                  <p className="text-xs text-slate-500">{isSav(t) ? `${TYPE_LABEL[t.type]} • ` : ""}{t.category} • {new Date(t.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</p>
                 </div>
-                <p className={`font-bold ${t.type === "income" ? "text-teal-600" : "text-rose-500"}`}>{t.type === "income" ? "+" : "−"}{rp(t.amount)}</p>
+                <p className={`font-bold ${{ indigo: "text-indigo-600", teal: "text-teal-600", rose: "text-rose-500" }[tone(t)]}`}>{plus(t) ? "+" : "−"}{rp(t.amount)}</p>
                 <button onClick={() => remove(t.id)} aria-label="Hapus transaksi" className="rounded-lg px-2 py-1 text-slate-400 hover:bg-rose-50 hover:text-rose-500">✕</button>
               </li>
             ))}

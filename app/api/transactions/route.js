@@ -17,10 +17,15 @@ export async function POST(req) {
   if (!(await isAuthed())) return deny();
   const b = await req.json();
   const amount = Math.round(Number(b.amount));
-  if (!["income", "expense"].includes(b.type) || !(amount > 0) || !b.category || !/^\d{4}-\d{2}-\d{2}$/.test(b.date || "")) {
+  if (!["income", "expense", "savings_in", "savings_out"].includes(b.type) || !(amount > 0) || !b.category || !/^\d{4}-\d{2}-\d{2}$/.test(b.date || "")) {
     return NextResponse.json({ error: "Data belum lengkap. Isi nominal, kategori, dan tanggal." }, { status: 400 });
   }
   const sql = await db();
+  if (b.type === "savings_out") {
+    const [r] = await sql`SELECT COALESCE(SUM(CASE WHEN type = 'savings_in' THEN amount ELSE -amount END), 0)::float8 AS bal
+      FROM transactions WHERE type IN ('savings_in', 'savings_out')`;
+    if (amount > r.bal) return NextResponse.json({ error: "Saldo tabungan tidak cukup untuk ditarik." }, { status: 400 });
+  }
   const id = crypto.randomUUID();
   await sql`INSERT INTO transactions (id, type, amount, category, note, date)
     VALUES (${id}, ${b.type}, ${amount}, ${b.category}, ${(b.note || "").slice(0, 80)}, ${b.date})`;
