@@ -45,6 +45,7 @@ export default function Dashboard() {
   const [pw, setPw] = useState("");
   const [loginErr, setLoginErr] = useState("");
   const [loadErr, setLoadErr] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const load = async () => {
     try {
@@ -78,10 +79,21 @@ export default function Dashboard() {
   const submit = async (e) => {
     e.preventDefault();
     setError("");
-    const res = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-    if (!res.ok) return setError((await res.json().catch(() => ({}))).error || "Gagal menyimpan. Coba lagi.");
-    setOpen(false);
-    load();
+    if (!(Number(form.amount) > 0)) return setError("Isi nominal dulu ya.");
+    setSaving(true);
+    try {
+      const res = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      if (!res.ok) {
+        setError((await res.json().catch(() => ({}))).error || "Gagal menyimpan. Coba lagi.");
+        return;
+      }
+      setOpen(false);
+      load();
+    } catch {
+      setError("Tidak bisa terhubung ke server. Periksa koneksi lalu coba lagi.");
+    } finally {
+      setSaving(false);
+    }
   };
   const remove = async (id) => { if (confirm("Hapus transaksi ini?")) { await fetch(`/api/transactions?id=${id}`, { method: "DELETE" }); load(); } };
   const login = async (e) => {
@@ -307,7 +319,7 @@ export default function Dashboard() {
 
       {open && (
         <div className="fixed inset-0 z-30 flex items-end justify-center bg-slate-900/50 sm:items-center" onClick={() => setOpen(false)}>
-          <form role="dialog" aria-modal="true" aria-label="Tambah transaksi" onClick={(e) => e.stopPropagation()} onSubmit={submit}
+          <form role="dialog" aria-modal="true" aria-label="Tambah transaksi" onClick={(e) => e.stopPropagation()} onSubmit={submit} noValidate
             className="max-h-[92vh] w-full max-w-md space-y-3 overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl" style={{ paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom, 0px))" }}>
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold">Tambah transaksi</h2>
@@ -319,7 +331,7 @@ export default function Dashboard() {
                   className={`rounded-lg py-2.5 text-sm font-semibold transition ${form.type === q.type ? "bg-white shadow" : "text-slate-500"}`}>{q.label}</button>
               ))}
             </div>
-            <input className="field !text-2xl font-bold" type="number" inputMode="numeric" min="1" autoFocus placeholder="Nominal (Rp)" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+            <input className="field !text-2xl font-bold" type="text" inputMode="numeric" autoFocus placeholder="Nominal (Rp)" value={form.amount ? Number(form.amount).toLocaleString("id-ID") : ""} onChange={(e) => setForm({ ...form, amount: e.target.value.replace(/\D/g, "").slice(0, 12) })} />
             {form.type === "savings_out" ? (
               <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">Dibayar dari tabungan BNI. Sisa saat ini {rp(stats.tabungan)}.</p>
             ) : (
@@ -333,7 +345,7 @@ export default function Dashboard() {
             <input className="field" placeholder="Catatan (opsional)" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
             <input className="field" type="date" aria-label="Tanggal" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
             {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
-            <button className="w-full rounded-xl bg-indigo-600 py-3.5 font-semibold text-white transition hover:bg-indigo-700">Simpan</button>
+            <button disabled={saving} className="w-full rounded-xl bg-indigo-600 py-3.5 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60">{saving ? "Menyimpan…" : "Simpan"}</button>
           </form>
         </div>
       )}
