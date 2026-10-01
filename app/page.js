@@ -128,6 +128,10 @@ export default function Dashboard() {
     return { nabung, tarik, BRI, SPAY, sisa: BRI + SPAY, tabungan: nabung - tarik, rows, total, cur, cats };
   }, [tx, year, thisYear]);
 
+  const avail = form.type === "income" ? Infinity : form.type === "savings_out" ? stats.tabungan : stats[form.account];
+  const over = Number(form.amount) > avail;
+  const overMsg = `${form.type === "savings_out" ? "Sisa tabungan BNI" : `Saldo ${NAME[form.account]}`} hanya ${rp(Math.max(avail, 0))}.`;
+
   if (!authed) {
     return (
       <main className="grid min-h-screen place-items-center px-4">
@@ -333,19 +337,27 @@ export default function Dashboard() {
             </div>
             <input className="field !text-2xl font-bold" type="text" inputMode="numeric" autoFocus placeholder="Nominal (Rp)" value={form.amount ? Number(form.amount).toLocaleString("id-ID") : ""} onChange={(e) => setForm({ ...form, amount: e.target.value.replace(/\D/g, "").slice(0, 12) })} />
             {form.type === "savings_out" ? (
-              <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">Dibayar dari tabungan BNI. Sisa saat ini {rp(stats.tabungan)}.</p>
+              <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">Dibayar dari tabungan BNI.</p>
             ) : (
               <select className="field" aria-label="Rekening" value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })}>
                 {["BRI", "SPAY"].map((a) => <option key={a} value={a}>{form.type === "savings_in" ? "Dari " : "Rekening "}{NAME[a]}</option>)}
               </select>
             )}
+            {form.type !== "income" && (over ? (
+              <div role="alert" className="flex gap-2 rounded-xl bg-rose-50 p-3 text-sm text-rose-700 ring-1 ring-rose-200">
+                <span aria-hidden="true">⚠</span>
+                <span><b>Nominal melebihi saldo.</b> {overMsg}</span>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">Saldo tersedia: {rp(Math.max(avail, 0))}</p>
+            ))}
             <select className="field" aria-label="Kategori" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
               {CATS[form.type].map((c) => <option key={c}>{c}</option>)}
             </select>
             <input className="field" placeholder="Catatan (opsional)" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
             <input className="field" type="date" aria-label="Tanggal" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
             {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
-            <button disabled={saving} className="w-full rounded-xl bg-indigo-600 py-3.5 font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60">{saving ? "Menyimpan…" : "Simpan"}</button>
+            <button disabled={saving || over} className="w-full rounded-xl bg-indigo-600 py-3.5 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">{saving ? "Menyimpan…" : "Simpan"}</button>
           </form>
         </div>
       )}
