@@ -44,13 +44,22 @@ export default function Dashboard() {
   const [authed, setAuthed] = useState(true);
   const [pw, setPw] = useState("");
   const [loginErr, setLoginErr] = useState("");
+  const [loadErr, setLoadErr] = useState("");
 
   const load = async () => {
-    const res = await fetch("/api/transactions");
-    if (res.status === 401) { setAuthed(false); setLoading(false); return; }
-    setAuthed(true);
-    setTx(await res.json());
-    setLoading(false);
+    try {
+      const res = await fetch("/api/transactions");
+      if (res.status === 401) { setAuthed(false); return; }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Server bermasalah");
+      setAuthed(true);
+      setLoadErr("");
+      setTx(data);
+    } catch (e) {
+      setLoadErr(e.message || "Tidak bisa terhubung ke server");
+    } finally {
+      setLoading(false);
+    }
   };
   useEffect(() => { load(); }, []);
   useEffect(() => {
@@ -70,7 +79,7 @@ export default function Dashboard() {
     e.preventDefault();
     setError("");
     const res = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-    if (!res.ok) return setError((await res.json()).error);
+    if (!res.ok) return setError((await res.json().catch(() => ({}))).error || "Gagal menyimpan. Coba lagi.");
     setOpen(false);
     load();
   };
@@ -134,6 +143,13 @@ export default function Dashboard() {
         </div>
         <button onClick={logout} className="rounded-xl bg-white px-4 py-2 text-sm font-semibold shadow-sm transition hover:bg-slate-50">Keluar</button>
       </header>
+
+      {loadErr && (
+        <div role="alert" className="rounded-2xl bg-rose-50 p-4 text-sm text-rose-700">
+          Gagal memuat data: {loadErr}
+          <button onClick={load} className="ml-2 font-semibold underline">Coba lagi</button>
+        </div>
+      )}
 
       <section className="grid gap-4 lg:grid-cols-5">
         <div className="hero relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-700 via-indigo-600 to-violet-600 p-5 text-white sm:p-8 lg:col-span-3">
