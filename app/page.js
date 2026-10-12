@@ -31,6 +31,18 @@ const where = (t) => (t.type === "savings_in" ? `${NAME[t.account]} → BNI` : t
 const ICON = { indigo: "bg-indigo-50 text-indigo-600", teal: "bg-teal-50 text-teal-600", rose: "bg-rose-50 text-rose-500", slate: "bg-slate-100 text-slate-600" };
 const TEXT = { indigo: "text-indigo-600", teal: "text-teal-600", rose: "text-rose-500", slate: "text-slate-600" };
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function calc(rows) {
+  const b = { BRI: 0, SPAY: 0, BNI: 0 };
+  for (const t of rows) {
+    const a = t.account || "BRI", n = t.amount;
+    if (t.type === "income") b[a] += n;
+    else if (t.type === "expense") b[a] -= n;
+    else if (t.type === "savings_in") { b[a] -= n; b.BNI += n; }
+    else if (t.type === "savings_out") b.BNI -= n;
+    else if (t.type === "transfer") { b[a] -= n; b[t.to_account] += n; }
+  }
+  return b;
+}
 const blank = () => ({ type: "expense", account: "BRI", amount: "", category: "Makanan", note: "", date: ymd(new Date()) });
 
 export default function Dashboard() {
@@ -50,6 +62,7 @@ export default function Dashboard() {
   const [loginErr, setLoginErr] = useState("");
   const [loadErr, setLoadErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [editId, setEditId] = useState(null);
 
   const load = async () => {
     try {
@@ -75,7 +88,14 @@ export default function Dashboard() {
   }, [open]);
 
   const openForm = (type = "expense") => {
+    setEditId(null);
     setForm({ ...blank(), type, category: CATS[type][0], account: type === "savings_out" ? "BNI" : "BRI" });
+    setError("");
+    setOpen(true);
+  };
+  const openEdit = (t) => {
+    setForm({ type: t.type, account: t.type === "savings_out" ? "BNI" : t.account, amount: String(Math.round(t.amount)), category: t.category, note: t.note || "", date: t.date });
+    setEditId(t.id);
     setError("");
     setOpen(true);
   };
@@ -86,7 +106,7 @@ export default function Dashboard() {
     if (!(Number(form.amount) > 0)) return setError("Isi nominal dulu ya.");
     setSaving(true);
     try {
-      const res = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, to_account: form.account === "BRI" ? "SPAY" : "BRI" }) });
+      const res = await fetch("/api/transactions", { method: editId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, id: editId, to_account: form.account === "BRI" ? "SPAY" : "BRI" }) });
       if (!res.ok) {
         setError((await res.json().catch(() => ({}))).error || "Gagal menyimpan. Coba lagi.");
         return;
@@ -133,7 +153,8 @@ export default function Dashboard() {
     return { nabung, tarik, BRI, SPAY, sisa: BRI + SPAY, tabungan: nabung - tarik, rows, total, cur, cats };
   }, [tx, year, thisYear]);
 
-  const avail = form.type === "income" ? Infinity : form.type === "savings_out" ? stats.tabungan : stats[form.account];
+  const bal = calc(tx.filter((t) => t.id !== editId));
+  const avail = form.type === "income" ? Infinity : form.type === "savings_out" ? bal.BNI : bal[form.account];
   const over = Number(form.amount) > avail;
   const overMsg = `${form.type === "savings_out" ? "Sisa tabungan BNI" : `Saldo ${NAME[form.account]}`} hanya ${rp(Math.max(avail, 0))}.`;
 
@@ -233,12 +254,13 @@ export default function Dashboard() {
             {list.slice(0, limit).map((t) => (
               <li key={t.id} className="flex items-center gap-2.5 py-3 sm:gap-3">
                 <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl font-bold ${ICON[tone(t)]}`}>{sign(t) || "⇄"}</div>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 cursor-pointer" onClick={() => openEdit(t)}>
                   <p className="truncate font-semibold">{t.note || t.category}</p>
                   <p className="text-xs text-slate-500">{where(t)} • {t.category} • {new Date(t.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</p>
                 </div>
                 <p className={`whitespace-nowrap text-sm font-bold sm:text-base ${TEXT[tone(t)]}`}>{sign(t)}{rp(t.amount)}</p>
-                <button onClick={() => remove(t.id)} aria-label="Hapus transaksi" className="-mr-1 grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500">✕</button>
+                <button onClick={() => openEdit(t)} aria-label="Edit transaksi" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-indigo-50 hover:text-indigo-600">✎</button>
+                <button onClick={() => remove(t.id)} aria-label="Hapus transaksi" className="-mr-1 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500">✕</button>
               </li>
             ))}
           </ul>
@@ -331,7 +353,7 @@ export default function Dashboard() {
           <form role="dialog" aria-modal="true" aria-label="Tambah transaksi" onClick={(e) => e.stopPropagation()} onSubmit={submit} noValidate
             className="max-h-[92vh] w-full max-w-md space-y-3 overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl" style={{ paddingBottom: "calc(1.25rem + env(safe-area-inset-bottom, 0px))" }}>
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold">Tambah transaksi</h2>
+              <h2 className="text-lg font-bold">{editId ? "Edit transaksi" : "Tambah transaksi"}</h2>
               <button type="button" onClick={() => setOpen(false)} aria-label="Tutup" className="grid h-10 w-10 place-items-center rounded-full text-slate-500 hover:bg-slate-100">✕</button>
             </div>
             <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
@@ -362,7 +384,7 @@ export default function Dashboard() {
             <input className="field" placeholder="Catatan (opsional)" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
             <input className="field" type="date" aria-label="Tanggal" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
             {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
-            <button disabled={saving || over} className="w-full rounded-xl bg-indigo-600 py-3.5 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">{saving ? "Menyimpan…" : "Simpan"}</button>
+            <button disabled={saving || over} className="w-full rounded-xl bg-indigo-600 py-3.5 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60">{saving ? "Menyimpan…" : editId ? "Simpan perubahan" : "Simpan"}</button>
           </form>
         </div>
       )}
