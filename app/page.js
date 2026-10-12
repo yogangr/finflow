@@ -11,6 +11,7 @@ const CATS = {
   income: ["Gaji", "Freelance", "Investasi", "Lainnya"],
   savings_in: SAV,
   savings_out: SAV,
+  transfer: ["Pindah saldo"],
 };
 const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 const NAME = { BRI: "BRI", SPAY: "ShopeePay", BNI: "BNI" };
@@ -19,13 +20,16 @@ const QUICK = [
   { type: "expense", label: "Pengeluaran", icon: "−", cls: "bg-rose-50 text-rose-600" },
   { type: "savings_in", label: "Nabung", icon: "↓", cls: "bg-indigo-50 text-indigo-700" },
   { type: "savings_out", label: "Pakai tabungan", icon: "↑", cls: "bg-amber-50 text-amber-700" },
+  { type: "transfer", label: "Pindah saldo", icon: "⇄", cls: "bg-slate-100 text-slate-700" },
 ];
 const LABEL = Object.fromEntries(QUICK.map((q) => [q.type, q.label]));
 const isSav = (t) => t.type.startsWith("savings");
 const plus = (t) => t.type === "income" || t.type === "savings_in";
-const tone = (t) => (isSav(t) ? "indigo" : plus(t) ? "teal" : "rose");
-const ICON = { indigo: "bg-indigo-50 text-indigo-600", teal: "bg-teal-50 text-teal-600", rose: "bg-rose-50 text-rose-500" };
-const TEXT = { indigo: "text-indigo-600", teal: "text-teal-600", rose: "text-rose-500" };
+const tone = (t) => (t.type === "transfer" ? "slate" : isSav(t) ? "indigo" : plus(t) ? "teal" : "rose");
+const sign = (t) => (t.type === "transfer" ? "" : plus(t) ? "+" : "−");
+const where = (t) => (t.type === "savings_in" ? `${NAME[t.account]} → BNI` : t.type === "transfer" ? `${NAME[t.account]} → ${NAME[t.to_account]}` : NAME[t.account]);
+const ICON = { indigo: "bg-indigo-50 text-indigo-600", teal: "bg-teal-50 text-teal-600", rose: "bg-rose-50 text-rose-500", slate: "bg-slate-100 text-slate-600" };
+const TEXT = { indigo: "text-indigo-600", teal: "text-teal-600", rose: "text-rose-500", slate: "text-slate-600" };
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const blank = () => ({ type: "expense", account: "BRI", amount: "", category: "Makanan", note: "", date: ymd(new Date()) });
 
@@ -82,7 +86,7 @@ export default function Dashboard() {
     if (!(Number(form.amount) > 0)) return setError("Isi nominal dulu ya.");
     setSaving(true);
     try {
-      const res = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const res = await fetch("/api/transactions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, to_account: form.account === "BRI" ? "SPAY" : "BRI" }) });
       if (!res.ok) {
         setError((await res.json().catch(() => ({}))).error || "Gagal menyimpan. Coba lagi.");
         return;
@@ -112,11 +116,11 @@ export default function Dashboard() {
     const by = (f) => tx.filter(f).reduce((s, t) => s + t.amount, 0);
     const ty = (type, a) => by((t) => t.type === type && (!a || t.account === a));
     const nabung = ty("savings_in"), tarik = ty("savings_out");
-    const acc = (a) => ty("income", a) - ty("expense", a) - ty("savings_in", a);
+    const acc = (a) => ty("income", a) - ty("expense", a) - ty("savings_in", a) - ty("transfer", a) + by((t) => t.type === "transfer" && t.to_account === a);
     const BRI = acc("BRI"), SPAY = acc("SPAY");
 
     const sum = (r, type) => r.filter((t) => t.type === type).reduce((a, t) => a + t.amount, 0);
-    const mk = (r) => { const i = sum(r, "income"), e = sum(r, "expense"), n = sum(r, "savings_in"); return { Pemasukan: i, Pengeluaran: e, nabung: n, tarik: sum(r, "savings_out"), sisa: i - e - n }; };
+    const mk = (r) => { const i = sum(r, "income"), n = sum(r, "savings_in"), e = sum(r, "expense") + n; return { Pemasukan: i, Pengeluaran: e, nabung: n, tarik: sum(r, "savings_out"), sisa: i - e }; };
     const last = year === thisYear ? now.getMonth() : 11;
     const rows = Array.from({ length: last + 1 }, (_, m) => ({ name: MONTHS[m], short: MONTHS[m].slice(0, 3), ...mk(tx.filter((t) => t.date.startsWith(`${year}-${String(m + 1).padStart(2, "0")}`))) }));
     const total = rows.reduce((s, r) => Object.fromEntries(Object.keys(s).map((k) => [k, s[k] + r[k]])), { Pemasukan: 0, Pengeluaran: 0, nabung: 0, tarik: 0, sisa: 0 });
@@ -124,6 +128,7 @@ export default function Dashboard() {
 
     const byCat = {};
     tx.filter((t) => t.type === "expense").forEach((t) => (byCat[t.category] = (byCat[t.category] || 0) + t.amount));
+    if (nabung) byCat.Nabung = (byCat.Nabung || 0) + nabung;
     const cats = Object.entries(byCat).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
     return { nabung, tarik, BRI, SPAY, sisa: BRI + SPAY, tabungan: nabung - tarik, rows, total, cur, cats };
   }, [tx, year, thisYear]);
@@ -148,7 +153,7 @@ export default function Dashboard() {
 
   const v = (n) => (loading ? "…" : rp(n));
   const list = tx.filter((t) => filter === "all" || (filter === "savings" ? isSav(t) : t.type === filter));
-  const FILTERS = [["all", "Semua"], ["income", "Pemasukan"], ["expense", "Pengeluaran"], ["savings", "Tabungan"]];
+  const FILTERS = [["all", "Semua"], ["income", "Pemasukan"], ["expense", "Pengeluaran"], ["savings", "Tabungan"], ["transfer", "Pindah"]];
 
   return (
     <main className="mx-auto max-w-5xl space-y-4 px-4 pb-28 pt-6 sm:space-y-5 sm:px-6 sm:py-8 lg:pb-8">
@@ -188,16 +193,16 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {QUICK.map((q) => (
-          <button key={q.type} onClick={() => openForm(q.type)} className={`flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-sm font-semibold transition active:scale-[.98] sm:text-base ${q.cls}`}>
+          <button key={q.type} onClick={() => openForm(q.type)} className={`flex items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-sm font-semibold transition active:scale-[.98] sm:text-base ${q.cls} ${q.type === "transfer" ? "col-span-2 sm:col-span-1" : ""}`}>
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-lg font-bold">{q.icon}</span>{q.label}
           </button>
         ))}
       </section>
 
       <section className="panel">
-        <h2 className="font-bold">Ringkasan {MONTHS[now.getMonth()]}</h2>
+        <h2 className="font-bold">Ringkasan {MONTHS[now.getMonth()]}<span className="ml-2 text-xs font-normal text-slate-500">Keluar sudah termasuk nabung</span></h2>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center">
           {[["Masuk", stats.cur.Pemasukan, "text-teal-600"], ["Keluar", stats.cur.Pengeluaran, "text-rose-500"], ["Nabung", stats.cur.nabung, "text-indigo-600"]].map(([l, n, c]) => (
             <div key={l} className="rounded-2xl bg-slate-50 px-1 py-3">
@@ -227,12 +232,12 @@ export default function Dashboard() {
           <ul className="divide-y divide-slate-100">
             {list.slice(0, limit).map((t) => (
               <li key={t.id} className="flex items-center gap-2.5 py-3 sm:gap-3">
-                <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl font-bold ${ICON[tone(t)]}`}>{plus(t) ? "+" : "−"}</div>
+                <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl font-bold ${ICON[tone(t)]}`}>{sign(t) || "⇄"}</div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{t.note || t.category}</p>
-                  <p className="text-xs text-slate-500">{t.type === "savings_in" ? `${NAME[t.account]} → BNI` : NAME[t.account]} • {t.category} • {new Date(t.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</p>
+                  <p className="text-xs text-slate-500">{where(t)} • {t.category} • {new Date(t.date).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</p>
                 </div>
-                <p className={`whitespace-nowrap text-sm font-bold sm:text-base ${TEXT[tone(t)]}`}>{plus(t) ? "+" : "−"}{rp(t.amount)}</p>
+                <p className={`whitespace-nowrap text-sm font-bold sm:text-base ${TEXT[tone(t)]}`}>{sign(t)}{rp(t.amount)}</p>
                 <button onClick={() => remove(t.id)} aria-label="Hapus transaksi" className="-mr-1 grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500">✕</button>
               </li>
             ))}
@@ -256,9 +261,9 @@ export default function Dashboard() {
                   <h3 className="font-bold">{r.name}</h3>
                   <p className={`font-bold ${r.sisa < 0 ? "text-rose-600" : "text-teal-600"}`}>{rp(r.sisa)}</p>
                 </div>
-                <p className="text-right text-xs text-slate-500">Sisa saldo (masuk − keluar − nabung)</p>
+                <p className="text-right text-xs text-slate-500">Sisa saldo (masuk − keluar)</p>
                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm sm:grid-cols-4">
-                  {[["Pemasukan", r.Pemasukan], ["Pengeluaran", r.Pengeluaran], ["Nabung", r.nabung], ["Pakai tabungan", r.tarik]].map(([k, n]) => (
+                  {[["Pemasukan", r.Pemasukan], ["Pengeluaran", r.Pengeluaran], ["Di antaranya nabung", r.nabung], ["Pakai tabungan", r.tarik]].map(([k, n]) => (
                     <div key={k}><dt className="text-xs text-slate-500">{k}</dt><dd className="font-semibold">{rp(n)}</dd></div>
                   ))}
                 </dl>
@@ -332,7 +337,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
               {QUICK.map((q) => (
                 <button type="button" key={q.type} onClick={() => setType(q.type)}
-                  className={`rounded-lg py-2.5 text-sm font-semibold transition ${form.type === q.type ? "bg-white shadow" : "text-slate-500"}`}>{q.label}</button>
+                  className={`rounded-lg py-2.5 text-sm font-semibold transition ${form.type === q.type ? "bg-white shadow" : "text-slate-500"} ${q.type === "transfer" ? "col-span-2" : ""}`}>{q.label}</button>
               ))}
             </div>
             <input className="field !text-2xl font-bold" type="text" inputMode="numeric" autoFocus placeholder="Nominal (Rp)" value={form.amount ? Number(form.amount).toLocaleString("id-ID") : ""} onChange={(e) => setForm({ ...form, amount: e.target.value.replace(/\D/g, "").slice(0, 12) })} />
@@ -340,7 +345,7 @@ export default function Dashboard() {
               <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">Dibayar dari tabungan BNI.</p>
             ) : (
               <select className="field" aria-label="Rekening" value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })}>
-                {["BRI", "SPAY"].map((a) => <option key={a} value={a}>{form.type === "savings_in" ? "Dari " : "Rekening "}{NAME[a]}</option>)}
+                {["BRI", "SPAY"].map((a) => <option key={a} value={a}>{form.type === "transfer" ? `${NAME[a]} → ${NAME[a === "BRI" ? "SPAY" : "BRI"]}` : `${form.type === "savings_in" ? "Dari " : "Rekening "}${NAME[a]}`}</option>)}
               </select>
             )}
             {form.type !== "income" && (over ? (
@@ -351,9 +356,9 @@ export default function Dashboard() {
             ) : (
               <p className="text-sm text-slate-500">Saldo tersedia: {rp(Math.max(avail, 0))}</p>
             ))}
-            <select className="field" aria-label="Kategori" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+            {form.type !== "transfer" && (<select className="field" aria-label="Kategori" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
               {CATS[form.type].map((c) => <option key={c}>{c}</option>)}
-            </select>
+            </select>)}
             <input className="field" placeholder="Catatan (opsional)" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
             <input className="field" type="date" aria-label="Tanggal" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
             {error && <p className="text-sm text-rose-600" role="alert">{error}</p>}
